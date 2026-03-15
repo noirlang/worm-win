@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Worm Windows Agent v0.4.0
+Worm Windows Agent v0.0.1
 - Uzak disk imaji alma
 - WinPMEM kontrol / otomatik indirme
 - Secilebilir port + hafif Tk arayuz
