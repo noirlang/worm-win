@@ -226,6 +226,46 @@ class AgentController:
         self.security_key = ""
         self.language = "tr"
         self.log_file_path = self._init_log_file()
+        self.job_lock = threading.Lock()
+        self.job_state = {}
+
+    def _set_job_state(self, job_id, state):
+        if not job_id:
+            return
+        with self.job_lock:
+            self.job_state[job_id] = state
+
+    def _get_job_state(self, job_id):
+        if not job_id:
+            return "running"
+        with self.job_lock:
+            return self.job_state.get(job_id, "running")
+
+    def _clear_job_state(self, job_id):
+        if not job_id:
+            return
+        with self.job_lock:
+            self.job_state.pop(job_id, None)
+
+    def _control_job(self, job_id, action):
+        if not job_id or not action:
+            return False, "is_id and action are required"
+
+        action = str(action).strip().lower()
+        if action not in {"pause", "resume", "stop"}:
+            return False, "Unsupported action"
+
+        with self.job_lock:
+            if job_id not in self.job_state:
+                return False, "Job not found"
+            if action == "pause":
+                self.job_state[job_id] = "paused"
+            elif action == "resume":
+                self.job_state[job_id] = "running"
+            else:
+                self.job_state[job_id] = "stopped"
+
+        return True, "Control command applied"
 
     def cevir(self, metin):
         if not isinstance(metin, str):
@@ -407,7 +447,16 @@ class AgentController:
                 "toplam": toplam_boyut,
             })
 
+            self._set_job_state(is_id, "running")
+
             while okunan < toplam_boyut:
+                state = self._get_job_state(is_id)
+                if state == "paused":
+                    time.sleep(0.2)
+                    continue
+                if state == "stopped":
+                    break
+
                 okunacak = min(parca_boyutu, toplam_boyut - okunan)
                 hr, buf = win32file.ReadFile(handle, okunacak)
                 if hr != 0 or not buf:
@@ -450,6 +499,7 @@ class AgentController:
             json_gonder(conn, {"tur": "hata", "mesaj": str(e)})
             self.transfer_bilgi(f"Disk transfer error: {e}")
         finally:
+            self._clear_job_state(is_id)
             if handle:
                 win32file.CloseHandle(handle)
 
@@ -480,6 +530,8 @@ class AgentController:
         ]
 
         self.transfer_bilgi(f"RAM acquisition started: {cikti_dosya}")
+
+        self._set_job_state(is_id, "running")
 
         try:
             process = None
@@ -520,7 +572,53 @@ class AgentController:
             self.log(f"Selected WinPMEM command: {' '.join(secilen_komut)}")
             json_gonder(conn, {"tur": "veri_basliyor", "is_id": is_id, "toplam": toplam_ram})
 
+            was_paused = False
             while process.poll() is None:
+                state = self._get_job_state(is_id)
+                if state == "paused":
+                    if not was_paused:
+                        try:
+                            subprocess.run(
+                                [
+                                    "powershell",
+                                    "-NoProfile",
+                                    "-Command",
+                                    f"Suspend-Process -Id {process.pid} -ErrorAction SilentlyContinue",
+                                ],
+                                check=False,
+                                stdout=subprocess.DEVNULL,
+                                stderr=subprocess.DEVNULL,
+                            )
+                        except Exception:
+                            pass
+                        was_paused = True
+                    time.sleep(0.2)
+                    continue
+
+                if was_paused:
+                    try:
+                        subprocess.run(
+                            [
+                                "powershell",
+                                "-NoProfile",
+                                "-Command",
+                                f"Resume-Process -Id {process.pid} -ErrorAction SilentlyContinue",
+                            ],
+                            check=False,
+                            stdout=subprocess.DEVNULL,
+                            stderr=subprocess.DEVNULL,
+                        )
+                    except Exception:
+                        pass
+                    was_paused = False
+
+                if state == "stopped":
+                    try:
+                        process.terminate()
+                    except Exception:
+                        pass
+                    break
+
                 if os.path.exists(cikti_dosya) and toplam_ram > 0:
                     mevcut = os.path.getsize(cikti_dosya)
                     yuzde = int((mevcut * 100) / toplam_ram)
@@ -540,6 +638,17 @@ class AgentController:
 
             stdout_txt = (process.stdout.read() or b"").decode(errors="ignore") if process.stdout else ""
             stderr_txt = (process.stderr.read() or b"").decode(errors="ignore") if process.stderr else ""
+
+            if self._get_job_state(is_id) == "stopped":
+                partial = os.path.getsize(cikti_dosya) if os.path.exists(cikti_dosya) else 0
+                json_gonder(conn, {
+                    "tur": "hata",
+                    "is_id": is_id,
+                    "mesaj": f"RAM acquisition stopped by user | partial_size={partial}",
+                    "kod": "STOPPED_BY_USER",
+                })
+                self.transfer_bilgi("RAM acquisition stopped by user")
+                return
 
             if process.returncode == 0 and os.path.exists(cikti_dosya):
                 sha256_hash = hashlib.sha256()
@@ -574,6 +683,8 @@ class AgentController:
         except Exception as e:
             json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": str(e), "kod": "EXCEPTION"})
             self.transfer_bilgi(f"RAM acquisition error: {e}")
+        finally:
+            self._clear_job_state(is_id)
 
     def _dosya_stream_gonder(self, conn, dosya_yolu, is_id):
         try:
@@ -601,10 +712,19 @@ class AgentController:
                 "toplam": toplam,
             })
 
+            self._set_job_state(is_id, "running")
+
             gonderilen = 0
             son_rapor = time.time()
             with open(dosya_yolu, "rb") as f:
                 while True:
+                    state = self._get_job_state(is_id)
+                    if state == "paused":
+                        time.sleep(0.2)
+                        continue
+                    if state == "stopped":
+                        break
+
                     buf = f.read(1024 * 1024)
                     if not buf:
                         break
@@ -620,14 +740,23 @@ class AgentController:
                         )
                         son_rapor = simdi
 
-            json_gonder(conn, {
-                "tur": "bitti",
-                "is_id": is_id,
-                "sha256": sha256.hexdigest(),
-                "mesaj": "File transfer completed",
-            })
-            self.transfer_bilgi(f"RAM file transfer completed ({is_id})")
-            self.log(f"RAM file stream completed ({is_id})")
+            if gonderilen == toplam:
+                json_gonder(conn, {
+                    "tur": "bitti",
+                    "is_id": is_id,
+                    "sha256": sha256.hexdigest(),
+                    "mesaj": "File transfer completed",
+                })
+                self.transfer_bilgi(f"RAM file transfer completed ({is_id})")
+                self.log(f"RAM file stream completed ({is_id})")
+            else:
+                json_gonder(conn, {
+                    "tur": "hata",
+                    "is_id": is_id,
+                    "mesaj": f"File transfer interrupted | partial_size={gonderilen}",
+                })
+                self.transfer_bilgi(f"RAM file transfer interrupted ({is_id})")
+                self.log(f"RAM file stream interrupted ({is_id})")
         except Exception as e:
             json_gonder(conn, {
                 "tur": "hata",
@@ -635,6 +764,8 @@ class AgentController:
                 "mesaj": f"File transfer error: {e}",
             })
             self.log(f"RAM file stream error ({is_id}): {e}")
+        finally:
+            self._clear_job_state(is_id)
 
     def _istemci_yonet(self, conn, addr):
         self.log(f"Connection: {addr}")
@@ -775,6 +906,17 @@ class AgentController:
                     dosya = os.path.basename(dosya)
                     hedef = os.path.join(self.script_dir, dosya)
                     self._dosya_stream_gonder(conn, hedef, is_id)
+
+                elif komut == "edinim_kontrol":
+                    is_id = mesaj.get("is_id", "")
+                    eylem = mesaj.get("eylem", "")
+                    ok, msg = self._control_job(is_id, eylem)
+                    json_gonder(conn, {
+                        "durum": "ok" if ok else "hata",
+                        "is_id": is_id,
+                        "eylem": eylem,
+                        "mesaj": msg,
+                    })
 
                 elif komut in {
                     "hyperv_varlik_kontrol",
