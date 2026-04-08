@@ -1,5 +1,7 @@
 # Worm Windows Agent
 
+![Worm Windows Agent Demo](windows.gif)
+
 ## Turkce
 
 Bu depo, Worm ana uygulamasi icin Windows Agent bileşenini icerir.
