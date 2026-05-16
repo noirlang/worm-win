@@ -16,6 +16,27 @@ Bu depo, Worm ana uygulamasi icin Windows Agent bileşenini icerir.
 wget -O worm-win.exe https://worm.noirlang.tr/worm-win.exe
 ```
 
+### Windows'ta EXE Derleme
+
+`worm-win.exe` Windows uzerinde derlenmelidir. Linux uzerinde bu agent dogrudan derlenmez; Windows API ve pywin32 bagimliliklari gerekir.
+
+Windows makinede:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller --onefile --windowed --name worm-win windows.py
+```
+
+Cikti dosyasi:
+
+```text
+dist\worm-win.exe
+```
+
 ### Calistirma
 
 1. `worm-win.exe` dosyasini yonetici yetkisi ile calistirin.
@@ -42,6 +63,27 @@ This repository contains the Windows Agent component for the Worm main applicati
 
 ```bash
 wget -O worm-win.exe https://worm.noirlang.tr/worm-win.exe
+```
+
+### Build EXE on Windows
+
+`worm-win.exe` must be built on Windows. It is not built directly on Linux because it uses Windows APIs and pywin32.
+
+On a Windows machine:
+
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller --onefile --windowed --name worm-win windows.py
+```
+
+Output:
+
+```text
+dist\worm-win.exe
 ```
 
 ### Run

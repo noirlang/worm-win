@@ -252,6 +252,20 @@ class AgentController:
             return False, "is_id and action are required"
 
         action = str(action).strip().lower()
+        action_aliases = {
+            "duraklat": "pause",
+            "pause": "pause",
+            "beklet": "pause",
+            "devam": "resume",
+            "resume": "resume",
+            "surdur": "resume",
+            "sürdür": "resume",
+            "durdur": "stop",
+            "stop": "stop",
+            "iptal": "stop",
+            "cancel": "stop",
+        }
+        action = action_aliases.get(action, action)
         if action not in {"pause", "resume", "stop"}:
             return False, "Unsupported action"
 
@@ -428,6 +442,7 @@ class AgentController:
             if toplam_boyut <= 0:
                 json_gonder(conn, {"tur": "hata", "mesaj": "Disk size could not be read"})
                 return
+            self._set_job_state(is_id, "running")
 
             json_gonder(conn, {
                 "durum": "ok",
@@ -446,8 +461,6 @@ class AgentController:
                 "is_id": is_id,
                 "toplam": toplam_boyut,
             })
-
-            self._set_job_state(is_id, "running")
 
             while okunan < toplam_boyut:
                 state = self._get_job_state(is_id)
@@ -489,7 +502,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
-                    "mesaj": "Image transfer interrupted",
+                    "mesaj": "Image transfer stopped by user" if self._get_job_state(is_id) == "stopped" else "Image transfer interrupted",
                     "okunan": okunan,
                     "toplam": toplam_boyut,
                 })
@@ -909,7 +922,7 @@ class AgentController:
 
                 elif komut == "edinim_kontrol":
                     is_id = mesaj.get("is_id", "")
-                    eylem = mesaj.get("eylem", "")
+                    eylem = mesaj.get("eylem", "") or mesaj.get("action", "")
                     ok, msg = self._control_job(is_id, eylem)
                     json_gonder(conn, {
                         "durum": "ok" if ok else "hata",
