@@ -468,7 +468,16 @@ class AgentController:
                     time.sleep(0.2)
                     continue
                 if state == "stopped":
-                    break
+                    self.transfer_bilgi(f"Disk transfer stopped by user ({is_id})")
+                    try:
+                        conn.shutdown(socket.SHUT_RDWR)
+                    except Exception:
+                        pass
+                    try:
+                        conn.close()
+                    except Exception:
+                        pass
+                    return
 
                 okunacak = min(parca_boyutu, toplam_boyut - okunan)
                 hr, buf = win32file.ReadFile(handle, okunacak)
@@ -517,17 +526,32 @@ class AgentController:
                 win32file.CloseHandle(handle)
 
     def _ram_edinim_baslat(self, conn, cikti_dosya, is_id):
+        self._set_job_state(is_id, "running")
+
         if not WINDOWS:
             json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": "Windows required"})
+            self._clear_job_state(is_id)
             return
 
         ok, yol, mesaj = self.winpmem_hazirla(auto_download=True)
         if not ok:
             json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": mesaj, "kod": "WINPMEM_NOT_FOUND"})
+            self._clear_job_state(is_id)
             return
 
         if not yonetici_yetkisi_kontrol():
             json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": "Administrator privileges required", "kod": "ADMIN_REQUIRED"})
+            self._clear_job_state(is_id)
+            return
+
+        if self._get_job_state(is_id) == "stopped":
+            json_gonder(conn, {
+                "tur": "hata",
+                "is_id": is_id,
+                "mesaj": "RAM acquisition stopped by user",
+                "kod": "STOPPED_BY_USER",
+            })
+            self._clear_job_state(is_id)
             return
 
         toplam_ram = ram_boyut_al()
@@ -543,8 +567,6 @@ class AgentController:
         ]
 
         self.transfer_bilgi(f"RAM acquisition started: {cikti_dosya}")
-
-        self._set_job_state(is_id, "running")
 
         try:
             process = None
@@ -711,6 +733,7 @@ class AgentController:
                 return
 
             toplam = os.path.getsize(dosya_yolu)
+            self._set_job_state(is_id, "running")
             self.log(f"RAM file stream started ({is_id}): {dosya_yolu} ({toplam} bytes)")
             json_gonder(conn, {
                 "durum": "ok",
@@ -725,8 +748,6 @@ class AgentController:
                 "toplam": toplam,
             })
 
-            self._set_job_state(is_id, "running")
-
             gonderilen = 0
             son_rapor = time.time()
             with open(dosya_yolu, "rb") as f:
@@ -736,7 +757,17 @@ class AgentController:
                         time.sleep(0.2)
                         continue
                     if state == "stopped":
-                        break
+                        self.transfer_bilgi(f"RAM file transfer stopped by user ({is_id})")
+                        self.log(f"RAM file stream stopped by user ({is_id})")
+                        try:
+                            conn.shutdown(socket.SHUT_RDWR)
+                        except Exception:
+                            pass
+                        try:
+                            conn.close()
+                        except Exception:
+                            pass
+                        return
 
                     buf = f.read(1024 * 1024)
                     if not buf:
