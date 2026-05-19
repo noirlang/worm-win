@@ -16,6 +16,7 @@ import binascii
 import socket
 import struct
 import subprocess
+import sys
 import threading
 import time
 import urllib.request
@@ -50,6 +51,12 @@ WINPMEM_URLS = [
 
 def now_str():
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def app_base_dir():
+    if getattr(sys, "frozen", False):
+        return os.path.dirname(os.path.abspath(sys.executable))
+    return os.path.dirname(os.path.abspath(__file__))
 
 
 def json_gonder(conn, veri):
@@ -221,11 +228,12 @@ class AgentController:
         self.sock = None
         self.running = False
         self.port = DEFAULT_PORT
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
+        self.script_dir = app_base_dir()
         self.winpmem_path = ""
         self.security_key = ""
         self.language = "tr"
         self.log_file_path = self._init_log_file()
+        self.ram_output_index = {}
         self.job_lock = threading.Lock()
         self.job_state = {}
 
@@ -390,6 +398,20 @@ class AgentController:
             return ok, yol, mesaj
 
         return False, "", mesaj
+
+    def _cleanup_transferred_file(self, file_path, index_key=""):
+        target = os.path.abspath(file_path)
+        try:
+            if os.path.exists(target):
+                os.remove(target)
+                self.log(f"Transferred file deleted from agent: {target}")
+        except Exception as exc:
+            self.log(f"Transferred file could not be deleted from agent: {target} ({exc})")
+            return
+
+        for key, value in list(self.ram_output_index.items()):
+            if key == index_key or os.path.abspath(value) == target:
+                self.ram_output_index.pop(key, None)
 
     def start_server(self, port):
         if self.running:
@@ -721,7 +743,7 @@ class AgentController:
         finally:
             self._clear_job_state(is_id)
 
-    def _dosya_stream_gonder(self, conn, dosya_yolu, is_id):
+    def _dosya_stream_gonder(self, conn, dosya_yolu, is_id, delete_after_success=False, index_key=""):
         try:
             if not os.path.exists(dosya_yolu):
                 json_gonder(conn, {
@@ -793,6 +815,8 @@ class AgentController:
                 })
                 self.transfer_bilgi(f"RAM file transfer completed ({is_id})")
                 self.log(f"RAM file stream completed ({is_id})")
+                if delete_after_success:
+                    self._cleanup_transferred_file(dosya_yolu, index_key)
             else:
                 json_gonder(conn, {
                     "tur": "hata",
@@ -940,16 +964,18 @@ class AgentController:
 
                 elif komut == "ram_edinim_baslat":
                     is_id = mesaj.get("is_id") or ("RAM_" + str(int(time.time())))
-                    cikti_dosya = mesaj.get("cikti_dosya", "memory_dump.raw")
-                    self._ram_edinim_baslat(conn, cikti_dosya, is_id)
+                    cikti_dosya = os.path.basename(mesaj.get("cikti_dosya", "memory_dump.raw"))
+                    hedef = os.path.join(self.script_dir, cikti_dosya)
+                    self.ram_output_index[cikti_dosya] = hedef
+                    self._ram_edinim_baslat(conn, hedef, is_id)
 
                 elif komut == "ram_dosya_indir":
                     is_id = mesaj.get("is_id") or ("RAMDL_" + str(int(time.time())))
                     dosya = mesaj.get("dosya", "memory_dump.raw")
                     # Guvenlik: sadece dosya adi kabul et, dizin gecisine izin verme.
                     dosya = os.path.basename(dosya)
-                    hedef = os.path.join(self.script_dir, dosya)
-                    self._dosya_stream_gonder(conn, hedef, is_id)
+                    hedef = self.ram_output_index.get(dosya, os.path.join(self.script_dir, dosya))
+                    self._dosya_stream_gonder(conn, hedef, is_id, delete_after_success=True, index_key=dosya)
 
                 elif komut == "edinim_kontrol":
                     is_id = mesaj.get("is_id", "")
