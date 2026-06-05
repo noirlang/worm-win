@@ -20,6 +20,7 @@ import sys
 import threading
 import time
 import urllib.request
+import urllib.error
 from datetime import datetime
 
 try:
@@ -47,6 +48,18 @@ WINPMEM_NAME = "go-winpmem_amd64_1.0-rc2_signed.exe"
 WINPMEM_URLS = [
     "https://worm.noirlang.tr/go-winpmem_amd64_1.0-rc2_signed.exe",
 ]
+
+DOWNLOAD_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/125.0.0.0 Safari/537.36"
+    ),
+    "Accept": "application/octet-stream,application/vnd.microsoft.portable-executable,*/*",
+    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
+    "Referer": "https://worm.noirlang.tr/",
+    "Connection": "close",
+}
 
 
 def now_str():
@@ -88,15 +101,15 @@ def winpmem_indir(script_dir, log_cb=None, progress_cb=None):
         return False, "", "Non-Windows environment"
 
     hedef = os.path.join(script_dir, WINPMEM_NAME)
+    gecici_hedef = hedef + ".download"
 
-    def reporthook(blocknum, blocksize, totalsize):
+    def progress_guncelle(indirilen, toplam):
         if not progress_cb:
             return
-        if totalsize <= 0:
+        if toplam <= 0:
             progress_cb("Downloading: size unknown")
             return
-        indirilen = blocknum * blocksize
-        yuzde = int((indirilen * 100) / totalsize)
+        yuzde = int((indirilen * 100) / toplam)
         progress_cb(f"Downloading: %{min(yuzde, 100)}")
 
     son_hata = ""
@@ -104,13 +117,46 @@ def winpmem_indir(script_dir, log_cb=None, progress_cb=None):
         try:
             if log_cb:
                 log_cb(f"Downloading WinPMEM: {url}")
-            urllib.request.urlretrieve(url, hedef, reporthook=reporthook)
+
+            req = urllib.request.Request(url, headers=DOWNLOAD_HEADERS)
+            with urllib.request.urlopen(req, timeout=60) as response:
+                toplam = int(response.headers.get("Content-Length") or 0)
+                indirilen = 0
+
+                with open(gecici_hedef, "wb") as f:
+                    while True:
+                        blok = response.read(1024 * 1024)
+                        if not blok:
+                            break
+                        f.write(blok)
+                        indirilen += len(blok)
+                        progress_guncelle(indirilen, toplam)
+
+            if os.path.exists(gecici_hedef) and os.path.getsize(gecici_hedef) > 0:
+                os.replace(gecici_hedef, hedef)
+
             if os.path.exists(hedef) and os.path.getsize(hedef) > 0:
                 if log_cb:
                     log_cb(f"WinPMEM downloaded: {hedef}")
                 return True, hedef, "WinPMEM downloaded"
+        except urllib.error.HTTPError as e:
+            son_hata = f"HTTP {e.code}: {e.reason}"
+            if e.code == 403:
+                son_hata += " (server rejected the app request)"
+            if os.path.exists(gecici_hedef):
+                try:
+                    os.remove(gecici_hedef)
+                except Exception:
+                    pass
+            if log_cb:
+                log_cb(f"Download attempt failed: {son_hata}")
         except Exception as e:
             son_hata = str(e)
+            if os.path.exists(gecici_hedef):
+                try:
+                    os.remove(gecici_hedef)
+                except Exception:
+                    pass
             if log_cb:
                 log_cb(f"Download attempt failed: {e}")
 
