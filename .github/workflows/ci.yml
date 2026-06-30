@@ -3,10 +3,10 @@ name: Windows Agent CI
 on:
   push:
     branches:
-      - dev
+      - main
   pull_request:
     branches:
-      - dev
+      - main
   workflow_dispatch:
 
 permissions:
@@ -18,6 +18,7 @@ env:
 jobs:
   metadata:
     name: Build metadata
+    if: contains(github.event.head_commit.message, '[build]') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
     outputs:
       asset_suffix: ${{ steps.meta.outputs.asset_suffix }}
