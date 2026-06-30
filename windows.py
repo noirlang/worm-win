@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Worm Windows Agent v0.0.1
+Amele Windows Agent v0.0.1
 - Uzak disk imaji alma
 - WinPMEM kontrol / otomatik indirme
 - Secilebilir port + hafif Tk arayuz
@@ -46,7 +46,7 @@ DEFAULT_PORT = 4444
 WINPMEM_NAME = "go-winpmem_amd64_1.0-rc2_signed.exe"
 
 WINPMEM_URLS = [
-    "https://worm.noirlang.tr/go-winpmem_amd64_1.0-rc2_signed.exe",
+    "https://amele.noirlang.tr/go-winpmem_amd64_1.0-rc2_signed.exe",
 ]
 
 DOWNLOAD_HEADERS = {
@@ -57,7 +57,7 @@ DOWNLOAD_HEADERS = {
     ),
     "Accept": "application/octet-stream,application/vnd.microsoft.portable-executable,*/*",
     "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://worm.noirlang.tr/",
+    "Referer": "https://amele.noirlang.tr/",
     "Connection": "close",
 }
 
@@ -340,7 +340,7 @@ class AgentController:
             return metin
 
         eslemeler = [
-            ("Worm Windows Agent", "Worm Windows Ajan"),
+            ("Amele Windows Agent", "Amele Windows Ajan"),
             ("Server", "Sunucu"),
             ("Connection", "Baglanti"),
             ("Security Key:", "Guvenlik Anahtari:"),
@@ -400,7 +400,7 @@ class AgentController:
             docs = os.path.join(home, "Documents")
             if not os.path.isdir(docs):
                 docs = home
-            log_dir = os.path.join(docs, "Worm", "logs")
+            log_dir = os.path.join(docs, "Amele", "logs")
             os.makedirs(log_dir, exist_ok=True)
             dosya = datetime.now().strftime("windows_agent_%Y%m%d_%H%M%S.log")
             return os.path.join(log_dir, dosya)
@@ -1061,7 +1061,7 @@ class AgentUI:
     def __init__(self):
         self.controller = AgentController(ui=self)
         self.root = tk.Tk()
-        self.root.title("Worm Windows Agent")
+        self.root.title("Amele Windows Agent")
         self.root.geometry("760x520")
 
         self.log_queue = queue.Queue()
@@ -1159,7 +1159,7 @@ class AgentUI:
 
     def dil_degistir(self):
         self.controller.language = self.lang_var.get().strip() or "tr"
-        self.root.title(self.controller.cevir("Worm Windows Agent"))
+        self.root.title(self.controller.cevir("Amele Windows Agent"))
         self._cevir_widget_metinleri(self.root)
         self.key_status_var.set(self.controller.cevir(self.key_status_var.get()))
         self.status_var.set(self.controller.cevir(self.status_var.get()))
@@ -1248,7 +1248,7 @@ class AgentUI:
 
 def run_cli():
     controller = AgentController(ui=None)
-    print("Worm Windows Agent (CLI)")
+    print("Amele Windows Agent (CLI)")
     print(f"Windows mode: {WINDOWS}")
     try:
         port_text = input(f"Port [{DEFAULT_PORT}]: ").strip()
