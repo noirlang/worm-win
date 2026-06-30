@@ -87,13 +87,11 @@ jobs:
           Write-Host "Build OK: dist/amele-win.exe"
 
       - name: Name asset from commit
-        env:
-          ASSET_SUFFIX: ${{ needs.metadata.outputs.asset_suffix }}
         shell: pwsh
         run: |
           New-Item release-assets -ItemType Directory -Force | Out-Null
           Copy-Item dist\amele-win.exe `
-            "release-assets\amele-win-$env:ASSET_SUFFIX-windows-x64.exe"
+            "release-assets\amele-win.exe"
 
       - name: Upload executable
         uses: actions/upload-artifact@v7
@@ -121,13 +119,12 @@ jobs:
 
       - name: Create checksums and release notes
         env:
-          ASSET_SUFFIX: ${{ needs.metadata.outputs.asset_suffix }}
           RELEASE_TITLE: ${{ needs.metadata.outputs.release_title }}
         shell: bash
         run: |
           set -euo pipefail
           cd release-assets
-          sha256sum amele-win-* > "amele-win-${ASSET_SUFFIX}-SHA256SUMS.txt"
+          sha256sum amele-win.exe > "amele-win-SHA256SUMS.txt"
           cd ..
           cat > release-notes.md <<EOF
           Automated development release for **${RELEASE_TITLE}**.
