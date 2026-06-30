@@ -1,6 +1,10 @@
+<div align="center">
+<img src="https://amele.noirlang.tr/amele.png" alt="Amele Logo" width="120" />
+
 # Amele Windows Agent
 
 ![Amele Windows Agent Demo](windows.gif)
+</div>
 
 ## Turkce
 
