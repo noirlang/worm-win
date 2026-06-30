@@ -1,24 +1,24 @@
-# Worm Windows Agent
+# Amele Windows Agent
 
-![Worm Windows Agent Demo](windows.gif)
+![Amele Windows Agent Demo](windows.gif)
 
 ## Turkce
 
-Bu depo, Worm ana uygulamasi icin Windows Agent bileşenini icerir.
+Bu depo, Amele ana uygulamasi icin Windows Agent bileşenini icerir.
 
-- Ana repo: https://github.com/noirlang/worm
-- Windows Agent repo: https://github.com/noirlang/worm-win
-- Web sitesi: https://worm.noirlang.tr
+- Ana repo: https://github.com/noirlang/amele
+- Windows Agent repo: https://github.com/noirlang/amele-win
+- Web sitesi: https://amele.noirlang.tr
 
 ### Hazir EXE Indirme
 
 ```bash
-wget -O worm-win.exe https://worm.noirlang.tr/worm-win.exe
+wget -O amele-win.exe https://amele.noirlang.tr/amele-win.exe
 ```
 
 ### Windows'ta EXE Derleme
 
-`worm-win.exe` Windows uzerinde derlenmelidir. Linux uzerinde bu agent dogrudan derlenmez; Windows API ve pywin32 bagimliliklari gerekir.
+`amele-win.exe` Windows uzerinde derlenmelidir. Linux uzerinde bu agent dogrudan derlenmez; Windows API ve pywin32 bagimliliklari gerekir.
 
 Windows makinede:
 
@@ -28,24 +28,24 @@ py -m venv .venv
 py -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --onefile --windowed --name worm-win windows.py
+pyinstaller --onefile --windowed --name amele-win windows.py
 ```
 
 Cikti dosyasi:
 
 ```text
-dist\worm-win.exe
+dist\amele-win.exe
 ```
 
 ### Calistirma
 
-1. `worm-win.exe` dosyasini yonetici yetkisi ile calistirin.
+1. `amele-win.exe` dosyasini yonetici yetkisi ile calistirin.
 2. Gerekirse port ve token ayarlarini girin.
 3. Agent ekranda dinlenen baglanti bilgisini gosterecektir.
 
 ### Ana Uygulama ile Baglanti
 
-1. Worm masaustu uygulamasinda Windows araclari ekranina gecin.
+1. Amele masaustu uygulamasinda Windows araclari ekranina gecin.
 2. Agent'ta gordugunuz IP/Port degerlerini uygulamaya girin.
 3. Baglanin ve edinim adimlarini baslatin.
 
@@ -53,21 +53,21 @@ dist\worm-win.exe
 
 ## English
 
-This repository contains the Windows Agent component for the Worm main application.
+This repository contains the Windows Agent component for the Amele main application.
 
-- Main repo: https://github.com/noirlang/worm
-- Windows Agent repo: https://github.com/noirlang/worm-win
-- Website: https://worm.noirlang.tr
+- Main repo: https://github.com/noirlang/amele
+- Windows Agent repo: https://github.com/noirlang/amele-win
+- Website: https://amele.noirlang.tr
 
 ### Download Prebuilt EXE
 
 ```bash
-wget -O worm-win.exe https://worm.noirlang.tr/worm-win.exe
+wget -O amele-win.exe https://amele.noirlang.tr/amele-win.exe
 ```
 
 ### Build EXE on Windows
 
-`worm-win.exe` must be built on Windows. It is not built directly on Linux because it uses Windows APIs and pywin32.
+`amele-win.exe` must be built on Windows. It is not built directly on Linux because it uses Windows APIs and pywin32.
 
 On a Windows machine:
 
@@ -77,23 +77,23 @@ py -m venv .venv
 py -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --onefile --windowed --name worm-win windows.py
+pyinstaller --onefile --windowed --name amele-win windows.py
 ```
 
 Output:
 
 ```text
-dist\worm-win.exe
+dist\amele-win.exe
 ```
 
 ### Run
 
-1. Run `worm-win.exe` as Administrator.
+1. Run `amele-win.exe` as Administrator.
 2. Configure port/token settings if needed.
 3. The agent UI will display listening connection details.
 
 ### Connect with Main App
 
-1. Open the Windows tools section in the Worm desktop app.
+1. Open the Windows tools section in the Amele desktop app.
 2. Enter the same IP/Port values shown by agent.
 3. Connect and start acquisition workflows.

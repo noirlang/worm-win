@@ -39,18 +39,18 @@ jobs:
         run: python -m py_compile windows.py
 
       - name: Build executable
-        run: pyinstaller --noconfirm --onefile --windowed --name worm-win windows.py
+        run: pyinstaller --noconfirm --onefile --windowed --name amele-win windows.py
 
       - name: Verify executable exists
         shell: pwsh
         run: |
-          if (-not (Test-Path "dist/worm-win.exe")) {
-            throw "dist/worm-win.exe was not created"
+          if (-not (Test-Path "dist/amele-win.exe")) {
+            throw "dist/amele-win.exe was not created"
           }
 
       - name: Upload executable
         uses: actions/upload-artifact@v4
         with:
-          name: worm-win-x64
-          path: dist/worm-win.exe
+          name: amele-win-x64
+          path: dist/amele-win.exe
           if-no-files-found: error
