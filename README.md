@@ -3,7 +3,7 @@
 
 # Amele Windows Agent
 
-![Amele Windows Agent Demo](windows.gif)
+![Amele Windows Agent Demo](windows.gif2)
 </div>
 
 ## Turkce
