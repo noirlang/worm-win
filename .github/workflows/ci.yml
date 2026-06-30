@@ -3,26 +3,56 @@ name: Windows Agent CI
 on:
   push:
     branches:
-      - main
+      - dev
   pull_request:
     branches:
-      - main
+      - dev
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  build:
-    name: Build Windows agent
-    runs-on: windows-latest
+  metadata:
+    name: Build metadata
+    runs-on: ubuntu-24.04
+    outputs:
+      asset_suffix: ${{ steps.meta.outputs.asset_suffix }}
+      release_title: ${{ steps.meta.outputs.release_title }}
+      short_sha: ${{ steps.meta.outputs.short_sha }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - name: Compute metadata
+        id: meta
+        shell: bash
+        run: |
+          subject="${{ github.event.head_commit.message }}"
+          subject="${subject%%$'\n'*}"
+          short_sha="${GITHUB_SHA:0:12}"
+          ascii_subject="$(printf '%s' "$subject" \
+            | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || true)"
+          slug="$(printf '%s' "$ascii_subject" \
+            | tr '[:upper:]' '[:lower:]' \
+            | sed -E 's/[^a-z0-9]+/-/g; s/^-+|-+$//g; s/-+/-/g' \
+            | cut -c1-56)"
+          if [[ -z "$slug" ]]; then
+            slug="commit"
+          fi
+          echo "asset_suffix=${slug}-${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "release_title=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
+          echo "tag=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
 
+  build:
+    name: Build Windows agent executable
+    needs: metadata
+    runs-on: windows-2022
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -39,7 +69,13 @@ jobs:
         run: python -m py_compile windows.py
 
       - name: Build executable
-        run: pyinstaller --noconfirm --onefile --windowed --name amele-win windows.py
+        run: |
+          pyinstaller `
+            --noconfirm `
+            --onefile `
+            --windowed `
+            --name amele-win `
+            windows.py
 
       - name: Verify executable exists
         shell: pwsh
@@ -47,10 +83,84 @@ jobs:
           if (-not (Test-Path "dist/amele-win.exe")) {
             throw "dist/amele-win.exe was not created"
           }
+          Write-Host "Build OK: dist/amele-win.exe"
+
+      - name: Name asset from commit
+        env:
+          ASSET_SUFFIX: ${{ needs.metadata.outputs.asset_suffix }}
+        shell: pwsh
+        run: |
+          New-Item release-assets -ItemType Directory -Force | Out-Null
+          Copy-Item dist\amele-win.exe `
+            "release-assets\amele-win-$env:ASSET_SUFFIX-windows-x64.exe"
 
       - name: Upload executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
-          name: amele-win-x64
-          path: dist/amele-win.exe
+          name: amele-win-${{ needs.metadata.outputs.short_sha }}
+          path: release-assets/*
           if-no-files-found: error
+          retention-days: 30
+
+  release:
+    name: Publish commit prerelease
+    if: github.event_name == 'push'
+    needs:
+      - metadata
+      - build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v5
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Create checksums and release notes
+        env:
+          ASSET_SUFFIX: ${{ needs.metadata.outputs.asset_suffix }}
+          RELEASE_TITLE: ${{ needs.metadata.outputs.release_title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd release-assets
+          sha256sum amele-win-* > "amele-win-${ASSET_SUFFIX}-SHA256SUMS.txt"
+          cd ..
+          cat > release-notes.md <<EOF
+          Automated development release for **${RELEASE_TITLE}**.
+
+          Built from \`${GITHUB_SHA}\` on \`${GITHUB_REF_NAME}\`.
+
+          Packages:
+          - Windows x64 executable (amele-win.exe)
+
+          This is an unsigned prerelease generated from a development commit.
+          EOF
+
+      - name: Create or update commit release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.metadata.outputs.tag }}
+          RELEASE_TITLE: ${{ needs.metadata.outputs.release_title }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+            gh release upload "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --clobber
+          else
+            gh release create "$RELEASE_TAG" release-assets/* \
+              --repo "$GITHUB_REPOSITORY" \
+              --target "$GITHUB_SHA" \
+              --title "$RELEASE_TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+          fi
