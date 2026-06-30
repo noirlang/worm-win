@@ -49,7 +49,27 @@ dist\amele-win.exe
 2. Agent'ta gordugunuz IP/Port degerlerini uygulamaya girin.
 3. Baglanin ve edinim adimlarini baslatin.
 
+### CI / Otomatik Derleme
+
+Bu repo **GitHub Actions** ile otomatik derleme yapar.
+
+Pipeline yalnizca commit mesajinda `[build]` etiketi varsa tetiklenir:
+
+```bash
+git commit -m "feat: yeni özellik [build]"
+```
+
+Etiketsiz commit'ler push edilir ama derleme baslatilmaz.
+
+**Manuel tetikleme:** GitHub Actions sekmesinde "Run workflow" butonu.
+
+Pipeline adimlari:
+1. `metadata` — commit slug ve SHA hesaplar
+2. `build` — Python 3.12 + PyInstaller ile `amele-win.exe` uretir
+3. `release` — GitHub Releases'a prerelease olarak yukler
+
 ---
+
 
 ## English
 
