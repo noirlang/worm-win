@@ -978,8 +978,10 @@ class AgentController:
                         continue
 
                     disk_id = mesaj.get("disk_id", "0")
+                    fmt = mesaj.get("format", "raw")
                     parca = int(mesaj.get("parca_boyutu", 4 * 1024 * 1024))
                     is_id = mesaj.get("is_id") or ("IMG_" + str(int(time.time())))
+                    self.log(f"Starting disk acquisition for {disk_id} in {fmt} format")
                     self._imaj_gonder(conn, disk_id, parca, is_id)
 
                 elif komut == "winpmem_kontrol":
@@ -1010,8 +1012,10 @@ class AgentController:
 
                 elif komut == "ram_edinim_baslat":
                     is_id = mesaj.get("is_id") or ("RAM_" + str(int(time.time())))
+                    fmt = mesaj.get("format", "raw")
                     cikti_dosya = os.path.basename(mesaj.get("cikti_dosya", "memory_dump.raw"))
                     hedef = os.path.join(self.script_dir, cikti_dosya)
+                    self.log(f"Starting RAM acquisition for {cikti_dosya} in {fmt} format")
                     self.ram_output_index[cikti_dosya] = hedef
                     self._ram_edinim_baslat(conn, hedef, is_id)
 
