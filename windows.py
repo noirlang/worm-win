@@ -21,6 +21,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
+import ssl
 from datetime import datetime
 
 try:
@@ -124,51 +125,68 @@ def winpmem_indir(script_dir, log_cb=None, progress_cb=None):
 
     son_hata = ""
     for url in WINPMEM_URLS:
-        try:
-            if log_cb:
-                log_cb(f"Downloading WinPMEM: {url}")
+        attempts = [("verified TLS", None)]
+        if url.startswith("https://amele.noirlang.tr/"):
+            attempts.append(("certificate fallback", ssl._create_unverified_context()))
 
-            req = urllib.request.Request(url, headers=DOWNLOAD_HEADERS)
-            with urllib.request.urlopen(req, timeout=60) as response:
-                toplam = int(response.headers.get("Content-Length") or 0)
-                indirilen = 0
+        for attempt_label, ssl_context in attempts:
+            try:
+                if os.path.exists(gecici_hedef):
+                    try:
+                        os.remove(gecici_hedef)
+                    except Exception:
+                        pass
 
-                with open(gecici_hedef, "wb") as f:
-                    while True:
-                        blok = response.read(1024 * 1024)
-                        if not blok:
-                            break
-                        f.write(blok)
-                        indirilen += len(blok)
-                        progress_guncelle(indirilen, toplam)
-
-            if os.path.exists(gecici_hedef) and os.path.getsize(gecici_hedef) > 0:
-                os.replace(gecici_hedef, hedef)
-
-            if os.path.exists(hedef) and os.path.getsize(hedef) > 0:
                 if log_cb:
-                    log_cb(f"WinPMEM downloaded: {hedef}")
-                return True, hedef, "WinPMEM downloaded"
-        except urllib.error.HTTPError as e:
-            son_hata = f"HTTP {e.code}: {e.reason}"
-            if e.code == 403:
-                son_hata += " (server rejected the app request)"
-            if os.path.exists(gecici_hedef):
-                try:
-                    os.remove(gecici_hedef)
-                except Exception:
-                    pass
-            if log_cb:
-                log_cb(f"Download attempt failed: {son_hata}")
-        except Exception as e:
-            son_hata = str(e)
-            if os.path.exists(gecici_hedef):
-                try:
-                    os.remove(gecici_hedef)
-                except Exception:
-                    pass
-            if log_cb:
-                log_cb(f"Download attempt failed: {e}")
+                    log_cb(f"Downloading WinPMEM ({attempt_label}): {url}")
+
+                req = urllib.request.Request(url, headers=DOWNLOAD_HEADERS)
+                with urllib.request.urlopen(req, timeout=60, context=ssl_context) as response:
+                    toplam = int(response.headers.get("Content-Length") or 0)
+                    indirilen = 0
+
+                    with open(gecici_hedef, "wb") as f:
+                        while True:
+                            blok = response.read(1024 * 1024)
+                            if not blok:
+                                break
+                            f.write(blok)
+                            indirilen += len(blok)
+                            progress_guncelle(indirilen, toplam)
+
+                if os.path.exists(gecici_hedef) and os.path.getsize(gecici_hedef) > 0:
+                    os.replace(gecici_hedef, hedef)
+
+                if os.path.exists(hedef) and os.path.getsize(hedef) > 0:
+                    if log_cb:
+                        log_cb(f"WinPMEM downloaded: {hedef}")
+                    return True, hedef, "WinPMEM downloaded"
+            except urllib.error.HTTPError as e:
+                son_hata = f"HTTP {e.code}: {e.reason}"
+                if e.code == 403:
+                    son_hata += " (server rejected the app request)"
+                if os.path.exists(gecici_hedef):
+                    try:
+                        os.remove(gecici_hedef)
+                    except Exception:
+                        pass
+                if log_cb:
+                    log_cb(f"Download attempt failed ({attempt_label}): {son_hata}")
+                break
+            except Exception as e:
+                son_hata = str(e)
+                if os.path.exists(gecici_hedef):
+                    try:
+                        os.remove(gecici_hedef)
+                    except Exception:
+                        pass
+                if log_cb:
+                    log_cb(f"Download attempt failed ({attempt_label}): {e}")
+                if attempt_label == "verified TLS" and "CERTIFICATE_VERIFY_FAILED" in son_hata:
+                    if log_cb:
+                        log_cb("Certificate validation failed; retrying amele.noirlang.tr with certificate fallback")
+                    continue
+                break
 
     return False, "", f"WinPMEM download failed: {son_hata}"
 
@@ -777,15 +795,19 @@ class AgentController:
                             break
                         sha256_hash.update(chunk)
 
+                tamamlandi_mesaj = "RAM acquisition completed"
+                if output_format == "aff4":
+                    tamamlandi_mesaj = "RAM acquisition completed; ready for AFF4 packaging"
+
                 json_gonder(conn, {
                     "tur": "bitti",
                     "is_id": is_id,
                     "format": output_format,
                     "boyut": os.path.getsize(cikti_dosya),
                     "sha256": sha256_hash.hexdigest(),
-                    "mesaj": "RAM acquisition completed",
+                    "mesaj": tamamlandi_mesaj,
                 })
-                self.transfer_bilgi("RAM acquisition completed")
+                self.transfer_bilgi(tamamlandi_mesaj)
             else:
                 detay = f"returncode={process.returncode}"
                 if stderr_txt.strip():
