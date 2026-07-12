@@ -21,7 +21,6 @@ import threading
 import time
 import urllib.request
 import urllib.error
-import argparse
 from datetime import datetime
 
 try:
@@ -642,12 +641,8 @@ class AgentController:
         json_gonder(conn, {"durum": "ok", "is_id": is_id, "format": output_format, "toplam_boyut": toplam_ram, "winpmem_yol": yol})
 
         komut_adaylari = [
-            # go-winpmem (imzali RC2) CLI
-            [yol, "acquire", cikti_dosya],
-            # Olasi varyasyonlar / geri uyumluluk
-            [yol, "acquire", "--output", cikti_dosya],
+            [yol, "-o", cikti_dosya],
             [yol, cikti_dosya],
-            [yol, "-o", cikti_dosya, "-1"],
         ]
 
         self.transfer_bilgi(f"RAM acquisition started: {cikti_dosya}")
@@ -659,7 +654,7 @@ class AgentController:
 
             for aday in komut_adaylari:
                 try:
-                    p = subprocess.Popen(aday, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    p = subprocess.Popen(aday, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                     time.sleep(1)
 
                     if p.poll() is None:
@@ -1277,56 +1272,9 @@ class AgentUI:
         self.root.mainloop()
 
 
-def run_cli(port_override=None, key_override=None):
-    controller = AgentController(ui=None)
-    print("Amele Windows Agent (CLI)")
-    print(f"Windows mode: {WINDOWS}")
-    if port_override is not None:
-        try:
-            port = int(port_override)
-        except Exception:
-            port = DEFAULT_PORT
-    else:
-        try:
-            port_text = input(f"Port [{DEFAULT_PORT}]: ").strip()
-            port = int(port_text) if port_text else DEFAULT_PORT
-        except Exception:
-            port = DEFAULT_PORT
-
-    if key_override is not None:
-        key_text = key_override.strip()
-    else:
-        key_text = input("Security key (optional): ").strip()
-    controller.security_key = key_text
-
-    ok, msg = controller.start_server(port)
-    print(msg)
-    if not ok:
-        return
-
-    print("Stop with Ctrl+C")
-    try:
-        while True:
-            time.sleep(1)
-    except KeyboardInterrupt:
-        controller.stop_server()
-
-
-def main():
-    parser = argparse.ArgumentParser(add_help=True)
-    parser.add_argument("--cli", "--headless", action="store_true", dest="cli")
-    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
-    parser.add_argument("--token", "--key", default="")
-    args = parser.parse_args()
-    if args.cli:
-        run_cli(args.port, args.token)
-        return
+if __name__ == "__main__":
     if HAS_TK:
         ui = AgentUI()
         ui.run()
     else:
-        run_cli()
-
-
-if __name__ == "__main__":
-    main()
+        print("Tkinter not available. Amele Windows Agent requires a GUI environment.")
