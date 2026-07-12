@@ -21,6 +21,7 @@ import threading
 import time
 import urllib.request
 import urllib.error
+import argparse
 from datetime import datetime
 
 try:
@@ -1276,17 +1277,26 @@ class AgentUI:
         self.root.mainloop()
 
 
-def run_cli():
+def run_cli(port_override=None, key_override=None):
     controller = AgentController(ui=None)
     print("Amele Windows Agent (CLI)")
     print(f"Windows mode: {WINDOWS}")
-    try:
-        port_text = input(f"Port [{DEFAULT_PORT}]: ").strip()
-        port = int(port_text) if port_text else DEFAULT_PORT
-    except Exception:
-        port = DEFAULT_PORT
+    if port_override is not None:
+        try:
+            port = int(port_override)
+        except Exception:
+            port = DEFAULT_PORT
+    else:
+        try:
+            port_text = input(f"Port [{DEFAULT_PORT}]: ").strip()
+            port = int(port_text) if port_text else DEFAULT_PORT
+        except Exception:
+            port = DEFAULT_PORT
 
-    key_text = input("Security key (optional): ").strip()
+    if key_override is not None:
+        key_text = key_override.strip()
+    else:
+        key_text = input("Security key (optional): ").strip()
     controller.security_key = key_text
 
     ok, msg = controller.start_server(port)
@@ -1303,6 +1313,14 @@ def run_cli():
 
 
 def main():
+    parser = argparse.ArgumentParser(add_help=True)
+    parser.add_argument("--cli", "--headless", action="store_true", dest="cli")
+    parser.add_argument("--port", type=int, default=DEFAULT_PORT)
+    parser.add_argument("--token", "--key", default="")
+    args = parser.parse_args()
+    if args.cli:
+        run_cli(args.port, args.token)
+        return
     if HAS_TK:
         ui = AgentUI()
         ui.run()
