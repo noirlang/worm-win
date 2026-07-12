@@ -641,8 +641,9 @@ class AgentController:
         json_gonder(conn, {"durum": "ok", "is_id": is_id, "format": output_format, "toplam_boyut": toplam_ram, "winpmem_yol": yol})
 
         komut_adaylari = [
-            [yol, "-o", cikti_dosya],
-            [yol, cikti_dosya],
+            [yol, "acquire", cikti_dosya],
+            [yol, "acquire", "--output", cikti_dosya],
+            [yol, "-o", cikti_dosya, "-1"],
         ]
 
         self.transfer_bilgi(f"RAM acquisition started: {cikti_dosya}")
