@@ -642,8 +642,7 @@ class AgentController:
 
         komut_adaylari = [
             [yol, "acquire", cikti_dosya],
-            [yol, "acquire", "--output", cikti_dosya],
-            [yol, "-o", cikti_dosya, "-1"],
+            [yol, "acquire", "--format", "raw", cikti_dosya],
         ]
 
         self.transfer_bilgi(f"RAM acquisition started: {cikti_dosya}")
@@ -652,6 +651,7 @@ class AgentController:
             process = None
             secilen_komut = None
             son_hata = ""
+            ilk_hata = ""
 
             for aday in komut_adaylari:
                 try:
@@ -664,22 +664,22 @@ class AgentController:
                         break
 
                     stderr = (p.stderr.read() or b"").decode(errors="ignore")
-                    son_hata = stderr.strip() or f"returncode={p.returncode}"
-
-                    # Bayrak uyumsuzlugunda bir sonraki adayi dene.
-                    if "unknown" in stderr.lower() and "flag" in stderr.lower():
-                        continue
-
-                    # Hata bayrak disi ise yine de sonraki adayi dene.
+                    hata = stderr.strip() or f"returncode={p.returncode}"
+                    if not ilk_hata:
+                        ilk_hata = hata
+                    son_hata = hata
                 except Exception as e:
-                    son_hata = str(e)
+                    hata = str(e)
+                    if not ilk_hata:
+                        ilk_hata = hata
+                    son_hata = hata
 
             if process is None:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
                     "format": output_format,
-                    "mesaj": f"WinPMEM command could not be started: {son_hata}",
+                    "mesaj": f"WinPMEM command could not be started: {ilk_hata}",
                     "kod": "WINPMEM_CMD_ERROR",
                 })
                 self.transfer_bilgi("RAM acquisition failed: WinPMEM command could not be executed")
