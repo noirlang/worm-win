@@ -44,6 +44,7 @@ PYWIN32_OK = WINDOWS
 HOST = "0.0.0.0"
 DEFAULT_PORT = 4444
 WINPMEM_NAME = "go-winpmem_amd64_1.0-rc2_signed.exe"
+SUPPORTED_OUTPUT_FORMATS = {"raw", "aff4"}
 
 WINPMEM_URLS = [
     "https://amele.noirlang.tr/go-winpmem_amd64_1.0-rc2_signed.exe",
@@ -74,6 +75,15 @@ def app_base_dir():
 
 def json_gonder(conn, veri):
     conn.sendall(json.dumps(veri, ensure_ascii=False).encode("utf-8") + b"\n")
+
+
+def normalize_output_format(value):
+    fmt = str(value or "raw").strip().lower()
+    if fmt in {"dd", "img"}:
+        fmt = "raw"
+    if fmt not in SUPPORTED_OUTPUT_FORMATS:
+        return "", f"Unsupported output format: {fmt}. Supported formats: raw, aff4"
+    return fmt, ""
 
 
 def find_winpmem_paths(script_dir):
@@ -492,7 +502,7 @@ class AgentController:
                 break
             threading.Thread(target=self._istemci_yonet, args=(conn, addr), daemon=True).start()
 
-    def _imaj_gonder(self, conn, disk_id, parca_boyutu=4 * 1024 * 1024, is_id=None):
+    def _imaj_gonder(self, conn, disk_id, parca_boyutu=4 * 1024 * 1024, is_id=None, output_format="raw"):
         handle = None
         try:
             handle = win32file.CreateFile(
@@ -508,13 +518,14 @@ class AgentController:
             is_id = is_id or ("IMG_" + str(int(time.time())))
             toplam_boyut = disk_boyut_al(disk_id)
             if toplam_boyut <= 0:
-                json_gonder(conn, {"tur": "hata", "mesaj": "Disk size could not be read"})
+                json_gonder(conn, {"tur": "hata", "format": output_format, "mesaj": "Disk size could not be read"})
                 return
             self._set_job_state(is_id, "running")
 
             json_gonder(conn, {
                 "durum": "ok",
                 "is_id": is_id,
+                "format": output_format,
                 "tahmini_boyut": toplam_boyut,
             })
 
@@ -527,6 +538,7 @@ class AgentController:
             json_gonder(conn, {
                 "tur": "veri_basliyor",
                 "is_id": is_id,
+                "format": output_format,
                 "toplam": toplam_boyut,
             })
 
@@ -571,6 +583,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "bitti",
                     "is_id": is_id,
+                    "format": output_format,
                     "sha256": sha256.hexdigest(),
                     "md5": md5.hexdigest(),
                 })
@@ -579,6 +592,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
+                    "format": output_format,
                     "mesaj": "Image transfer stopped by user" if self._get_job_state(is_id) == "stopped" else "Image transfer interrupted",
                     "okunan": okunan,
                     "toplam": toplam_boyut,
@@ -586,29 +600,29 @@ class AgentController:
                 self.transfer_bilgi(f"Disk transfer interrupted ({is_id})")
 
         except Exception as e:
-            json_gonder(conn, {"tur": "hata", "mesaj": str(e)})
+            json_gonder(conn, {"tur": "hata", "format": output_format, "mesaj": str(e)})
             self.transfer_bilgi(f"Disk transfer error: {e}")
         finally:
             self._clear_job_state(is_id)
             if handle:
                 win32file.CloseHandle(handle)
 
-    def _ram_edinim_baslat(self, conn, cikti_dosya, is_id):
+    def _ram_edinim_baslat(self, conn, cikti_dosya, is_id, output_format="raw"):
         self._set_job_state(is_id, "running")
 
         if not WINDOWS:
-            json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": "Windows required"})
+            json_gonder(conn, {"tur": "hata", "is_id": is_id, "format": output_format, "mesaj": "Windows required"})
             self._clear_job_state(is_id)
             return
 
         ok, yol, mesaj = self.winpmem_hazirla(auto_download=True)
         if not ok:
-            json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": mesaj, "kod": "WINPMEM_NOT_FOUND"})
+            json_gonder(conn, {"tur": "hata", "is_id": is_id, "format": output_format, "mesaj": mesaj, "kod": "WINPMEM_NOT_FOUND"})
             self._clear_job_state(is_id)
             return
 
         if not yonetici_yetkisi_kontrol():
-            json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": "Administrator privileges required", "kod": "ADMIN_REQUIRED"})
+            json_gonder(conn, {"tur": "hata", "is_id": is_id, "format": output_format, "mesaj": "Administrator privileges required", "kod": "ADMIN_REQUIRED"})
             self._clear_job_state(is_id)
             return
 
@@ -616,6 +630,7 @@ class AgentController:
             json_gonder(conn, {
                 "tur": "hata",
                 "is_id": is_id,
+                "format": output_format,
                 "mesaj": "RAM acquisition stopped by user",
                 "kod": "STOPPED_BY_USER",
             })
@@ -623,7 +638,7 @@ class AgentController:
             return
 
         toplam_ram = ram_boyut_al()
-        json_gonder(conn, {"durum": "ok", "is_id": is_id, "toplam_boyut": toplam_ram, "winpmem_yol": yol})
+        json_gonder(conn, {"durum": "ok", "is_id": is_id, "format": output_format, "toplam_boyut": toplam_ram, "winpmem_yol": yol})
 
         komut_adaylari = [
             # go-winpmem (imzali RC2) CLI
@@ -666,6 +681,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
+                    "format": output_format,
                     "mesaj": f"WinPMEM command could not be started: {son_hata}",
                     "kod": "WINPMEM_CMD_ERROR",
                 })
@@ -673,7 +689,7 @@ class AgentController:
                 return
 
             self.log(f"Selected WinPMEM command: {' '.join(secilen_komut)}")
-            json_gonder(conn, {"tur": "veri_basliyor", "is_id": is_id, "toplam": toplam_ram})
+            json_gonder(conn, {"tur": "veri_basliyor", "is_id": is_id, "format": output_format, "toplam": toplam_ram})
 
             was_paused = False
             while process.poll() is None:
@@ -732,6 +748,7 @@ class AgentController:
                     json_gonder(conn, {
                         "tur": "ilerleme",
                         "is_id": is_id,
+                        "format": output_format,
                         "okunan": mevcut,
                         "toplam": toplam_ram,
                         "yuzde": min(yuzde, 100),
@@ -747,6 +764,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
+                    "format": output_format,
                     "mesaj": f"RAM acquisition stopped by user | partial_size={partial}",
                     "kod": "STOPPED_BY_USER",
                 })
@@ -765,6 +783,7 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "bitti",
                     "is_id": is_id,
+                    "format": output_format,
                     "boyut": os.path.getsize(cikti_dosya),
                     "sha256": sha256_hash.hexdigest(),
                     "mesaj": "RAM acquisition completed",
@@ -779,12 +798,13 @@ class AgentController:
                 json_gonder(conn, {
                     "tur": "hata",
                     "is_id": is_id,
+                    "format": output_format,
                     "mesaj": f"WinPMEM error: {detay}",
                     "kod": "WINPMEM_ERROR",
                 })
                 self.transfer_bilgi(f"RAM acquisition failed: {detay}")
         except Exception as e:
-            json_gonder(conn, {"tur": "hata", "is_id": is_id, "mesaj": str(e), "kod": "EXCEPTION"})
+            json_gonder(conn, {"tur": "hata", "is_id": is_id, "format": output_format, "mesaj": str(e), "kod": "EXCEPTION"})
             self.transfer_bilgi(f"RAM acquisition error: {e}")
         finally:
             self._clear_job_state(is_id)
@@ -978,11 +998,14 @@ class AgentController:
                         continue
 
                     disk_id = mesaj.get("disk_id", "0")
-                    fmt = mesaj.get("format", "raw")
+                    fmt, format_error = normalize_output_format(mesaj.get("format", "raw"))
+                    if format_error:
+                        json_gonder(conn, {"durum": "hata", "mesaj": format_error, "kod": "UNSUPPORTED_FORMAT"})
+                        continue
                     parca = int(mesaj.get("parca_boyutu", 4 * 1024 * 1024))
                     is_id = mesaj.get("is_id") or ("IMG_" + str(int(time.time())))
                     self.log(f"Starting disk acquisition for {disk_id} in {fmt} format")
-                    self._imaj_gonder(conn, disk_id, parca, is_id)
+                    self._imaj_gonder(conn, disk_id, parca, is_id, fmt)
 
                 elif komut == "winpmem_kontrol":
                     mevcut, yol, durum = self.winpmem_hazirla(auto_download=True)
@@ -1012,12 +1035,15 @@ class AgentController:
 
                 elif komut == "ram_edinim_baslat":
                     is_id = mesaj.get("is_id") or ("RAM_" + str(int(time.time())))
-                    fmt = mesaj.get("format", "raw")
+                    fmt, format_error = normalize_output_format(mesaj.get("format", "raw"))
+                    if format_error:
+                        json_gonder(conn, {"durum": "hata", "is_id": is_id, "mesaj": format_error, "kod": "UNSUPPORTED_FORMAT"})
+                        continue
                     cikti_dosya = os.path.basename(mesaj.get("cikti_dosya", "memory_dump.raw"))
                     hedef = os.path.join(self.script_dir, cikti_dosya)
                     self.log(f"Starting RAM acquisition for {cikti_dosya} in {fmt} format")
                     self.ram_output_index[cikti_dosya] = hedef
-                    self._ram_edinim_baslat(conn, hedef, is_id)
+                    self._ram_edinim_baslat(conn, hedef, is_id, fmt)
 
                 elif komut == "ram_dosya_indir":
                     is_id = mesaj.get("is_id") or ("RAMDL_" + str(int(time.time())))
