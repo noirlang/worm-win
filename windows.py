@@ -21,7 +21,8 @@ import threading
 import time
 import urllib.request
 import urllib.error
-import ssl
+import tempfile
+import tarfile
 from datetime import datetime
 
 try:
@@ -316,6 +317,237 @@ class AgentController:
             return
         with self.job_lock:
             self.job_state[job_id] = state
+
+def docker_get_status():
+    is_avail = False
+    is_running = False
+    count = 0
+    running = 0
+    paused = 0
+    stopped = 0
+    root = "C:\\ProgramData\\Docker"
+
+    try:
+        out = subprocess.run(["docker", "info"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        if out.returncode == 0:
+            is_avail = True
+            is_running = True
+    except Exception:
+        pass
+
+    if is_running:
+        try:
+            out2 = subprocess.run(["docker", "ps", "-a", "--format", "{{.ID}}|{{.State}}"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+            if out2.returncode == 0:
+                lines = [l.strip() for l in out2.stdout.splitlines() if l.strip()]
+                count = len(lines)
+                for l in lines:
+                    parts = l.split("|")
+                    st = parts[1].lower() if len(parts) > 1 else ""
+                    if "running" in st or "up" in st:
+                        running += 1
+                    elif "paused" in st:
+                        paused += 1
+                    else:
+                        stopped += 1
+        except Exception:
+            pass
+
+    return {
+        "durum": "ok",
+        "docker_available": is_avail,
+        "docker_running": is_running,
+        "docker_mevcut": is_avail,
+        "docker_calisiyor": is_running,
+        "storage_driver": "windowsfilter" if os.path.exists("C:\\ProgramData\\Docker\\windowsfilter") else "unknown",
+        "depolama_surucusu": "windowsfilter" if os.path.exists("C:\\ProgramData\\Docker\\windowsfilter") else "unknown",
+        "root_dir": root,
+        "kok_dizin": root,
+        "containers_count": count,
+        "konteyner_sayisi": count,
+        "running_count": running,
+        "calisan_sayisi": running,
+        "paused_count": paused,
+        "duraklatilan_sayisi": paused,
+        "stopped_count": stopped,
+        "durdurulan_sayisi": stopped,
+    }
+
+
+def docker_evaluate_risk(config_v2, host_config, mounts):
+    reasons = []
+    score = 0
+
+    priv = bool(host_config.get("Privileged"))
+    if priv:
+        reasons.append("Konteyner tam yetkili (Privileged) modda çalışıyor (Kritik Host Ele Geçirme Riski).")
+        score += 50
+
+    for m in mounts:
+        src = m.get("source", "")
+        dst = m.get("destination", "")
+        if "docker.sock" in src or "docker.sock" in dst or "docker_engine" in src or "docker_engine" in dst:
+            reasons.append("Host Docker soketi / borusu konteyner içine mount edilmiş (DoD Escape riski).")
+            score += 40
+
+    user_val = (config_v2.get("Config") or {}).get("User") or config_v2.get("User") or ""
+    if not user_val or user_val == "0" or user_val.lower() in {"root", "containeradministrator"}:
+        reasons.append("Konteyner yönetici (Root / ContainerAdministrator) yetkileriyle çalışıyor.")
+        score += 10
+
+    if score >= 60:
+        level = "CRITICAL"
+    elif score >= 30:
+        level = "HIGH"
+    elif score >= 15:
+        level = "MEDIUM"
+    else:
+        level = "LOW"
+
+    return level, reasons
+
+
+def docker_scan_secrets(env_list):
+    secrets = []
+    if not env_list:
+        return secrets
+
+    patterns = [
+        ("API_KEY", "API / Token Anahtari"),
+        ("SECRET", "Secret / Gizli Anahtar"),
+        ("PASSWORD", "Parola / Sifre"),
+        ("PASS", "Parola / Sifre"),
+        ("TOKEN", "Guvenlik Belirteci (Token)"),
+        ("PRIVATE_KEY", "Ozel Anahtar (Private Key)"),
+        ("AWS_ACCESS_KEY", "Bulut Erisim Anahtari (AWS)"),
+        ("DB_PASS", "Veritabani Parolasi"),
+    ]
+
+    for env in env_list:
+        if "=" not in env:
+            continue
+        k, v = env.split("=", 1)
+        k_upper = k.upper()
+        if len(v.strip()) < 3:
+            continue
+        for p, kind in patterns:
+            if p in k_upper:
+                masked = v[:2] + "..." + v[-2:] if len(v) > 4 else "***"
+                secrets.append({
+                    "key": k,
+                    "value_preview": masked,
+                    "secret_type": kind
+                })
+                break
+    return secrets
+
+
+def docker_list_containers():
+    res = []
+    try:
+        out = subprocess.run(["docker", "ps", "-aq"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        if out.returncode == 0:
+            cids = out.stdout.strip().split()
+            if cids:
+                insp_out = subprocess.run(["docker", "inspect"] + cids, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+                if insp_out.returncode == 0:
+                    data = json.loads(insp_out.stdout)
+                    for d in data:
+                        c_id = d.get("Id", "")
+                        c_name = d.get("Name", "").lstrip("/") or "unnamed"
+                        img = (d.get("Config") or {}).get("Image") or "unknown"
+                        created = d.get("Created", "")
+                        st = d.get("State", {})
+                        running = bool(st.get("Running"))
+                        pid = int(st.get("Pid") or 0)
+                        exit_code = int(st.get("ExitCode") or 0)
+                        state_str = "running" if running else ("paused" if st.get("Paused") else "exited")
+                        host_config = d.get("HostConfig") or {}
+                        gdata = (d.get("GraphDriver") or {}).get("Data") or {}
+                        upper_dir = gdata.get("UpperDir")
+                        merged_dir = gdata.get("MergedDir")
+                        work_dir = gdata.get("WorkDir")
+                        log_path = d.get("LogPath")
+                        net = d.get("NetworkSettings") or {}
+                        ip_addr = net.get("IPAddress") or None
+                        port_bindings = host_config.get("PortBindings") or {}
+                        ports = []
+                        for c_p, b_list in port_bindings.items():
+                            if b_list:
+                                for b in b_list:
+                                    h_p = b.get("HostPort", "")
+                                    h_ip = b.get("HostIp", "0.0.0.0") or "0.0.0.0"
+                                    ports.append(f"{h_ip}:{h_p} -> {c_p}")
+                        mounts_raw = d.get("Mounts") or []
+                        mounts = []
+                        for m in mounts_raw:
+                            mounts.append({
+                                "source": m.get("Source", ""),
+                                "destination": m.get("Destination", ""),
+                                "mode": m.get("Mode", ""),
+                                "rw": bool(m.get("RW", True)),
+                                "propagation": m.get("Propagation", ""),
+                            })
+                        env_list = (d.get("Config") or {}).get("Env") or []
+                        secrets = docker_scan_secrets(env_list)
+                        risk_level, risk_reasons = docker_evaluate_risk(d, host_config, mounts)
+                        privileged = bool(host_config.get("Privileged"))
+                        driver = d.get("Driver", "windowsfilter")
+                        res.append({
+                            "id": c_id,
+                            "short_id": c_id[:12],
+                            "name": c_name,
+                            "image": img,
+                            "created": created,
+                            "state": state_str,
+                            "durum": state_str,
+                            "running": running,
+                            "calisiyor": running,
+                            "pid": pid,
+                            "exit_code": exit_code,
+                            "upper_dir": upper_dir,
+                            "merged_dir": merged_dir,
+                            "work_dir": work_dir,
+                            "log_path": log_path,
+                            "ip_address": ip_addr,
+                            "ip_adresi": ip_addr,
+                            "ports": ports,
+                            "portlar": ports,
+                            "privileged": privileged,
+                            "risk_level": risk_level,
+                            "risk_seviyesi": risk_level,
+                            "risk_reasons": risk_reasons,
+                            "risk_nedenleri": risk_reasons,
+                            "mounts": mounts,
+                            "mountlar": mounts,
+                            "secrets_found": secrets,
+                            "bulunan_gizli_bilgiler": secrets,
+                            "driver": driver,
+                            "depolama_surucusu": driver,
+                        })
+    except Exception:
+        pass
+
+    res.sort(key=lambda x: x["name"].lower())
+    return res
+
+
+def docker_get_logs(container_id, tail=200):
+    logs = []
+    try:
+        tail_arg = str(tail) if tail > 0 else "200"
+        out = subprocess.run(["docker", "logs", "--tail", tail_arg, container_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5)
+        if out.returncode == 0:
+            combined = out.stdout + out.stderr
+            for l in combined.splitlines():
+                if l.strip():
+                    logs.append({"log": l + "\n", "stream": "cli", "time": datetime.now().isoformat()})
+    except Exception:
+        pass
+    if tail > 0 and len(logs) > tail:
+        logs = logs[-tail:]
+    return logs
+
 
     def _get_job_state(self, job_id):
         if not job_id:
@@ -920,6 +1152,104 @@ class AgentController:
         finally:
             self._clear_job_state(is_id)
 
+    def _docker_stream_acquisition(self, conn, container_id, acquire_diff, acquire_logs, acquire_config, job_id):
+        self._set_job_state(job_id, "running")
+        c_dir = os.path.join("C:\\ProgramData\\Docker\\containers", container_id)
+        cfg_file = os.path.join(c_dir, "config.v2.json")
+        host_file = os.path.join(c_dir, "hostconfig.json")
+        log_file = os.path.join(c_dir, f"{container_id}-json.log")
+
+        config_v2 = {}
+        if os.path.exists(cfg_file):
+            try:
+                with open(cfg_file, "r", encoding="utf-8") as f:
+                    config_v2 = json.load(f)
+            except Exception:
+                pass
+
+        if not config_v2:
+            try:
+                insp = subprocess.run(["docker", "inspect", container_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=10)
+                if insp.returncode == 0:
+                    arr = json.loads(insp.stdout)
+                    if arr:
+                        config_v2 = arr[0]
+            except Exception:
+                pass
+
+        if not config_v2:
+            json_gonder(conn, {"durum": "hata", "tur": "hata", "is_id": job_id, "mesaj": f"Container directory / inspect not found for: {container_id}"})
+            self._clear_job_state(job_id)
+            return
+
+        c_name = config_v2.get("Name", "").lstrip("/") or "container"
+
+        temp_tar = tempfile.NamedTemporaryFile(suffix=".tar.gz", delete=False)
+        temp_tar_path = temp_tar.name
+        temp_tar.close()
+
+        try:
+            import io
+            self.log(f"Building Docker evidence bundle for {container_id} ({c_name})...")
+            with tarfile.open(temp_tar_path, "w:gz") as tar:
+                if acquire_config:
+                    if os.path.exists(cfg_file):
+                        tar.add(cfg_file, arcname="config.v2.json")
+                    else:
+                        cfg_bytes = json.dumps(config_v2, indent=2).encode("utf-8")
+                        ti = tarfile.TarInfo(name="config.v2.json")
+                        ti.size = len(cfg_bytes)
+                        ti.mtime = int(time.time())
+                        tar.addfile(ti, io.BytesIO(cfg_bytes))
+
+                    if os.path.exists(host_file):
+                        tar.add(host_file, arcname="hostconfig.json")
+                    elif config_v2.get("HostConfig"):
+                        hc_bytes = json.dumps(config_v2.get("HostConfig"), indent=2).encode("utf-8")
+                        ti = tarfile.TarInfo(name="hostconfig.json")
+                        ti.size = len(hc_bytes)
+                        ti.mtime = int(time.time())
+                        tar.addfile(ti, io.BytesIO(hc_bytes))
+
+                if acquire_logs:
+                    if os.path.exists(log_file):
+                        tar.add(log_file, arcname="container.log")
+                    else:
+                        try:
+                            l_out = subprocess.run(["docker", "logs", container_id], stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=10)
+                            log_bytes = l_out.stdout + l_out.stderr
+                            ti = tarfile.TarInfo(name="container.log")
+                            ti.size = len(log_bytes)
+                            ti.mtime = int(time.time())
+                            tar.addfile(ti, io.BytesIO(log_bytes))
+                        except Exception:
+                            pass
+
+                meta_bytes = json.dumps({
+                    "edinim_zamani": datetime.now().isoformat(),
+                    "konteyner_id": container_id,
+                    "isim": c_name,
+                    "config_v2": config_v2,
+                }, indent=2).encode("utf-8")
+
+                ti = tarfile.TarInfo(name="docker_metadata.json")
+                ti.size = len(meta_bytes)
+                ti.mtime = int(time.time())
+                tar.addfile(ti, io.BytesIO(meta_bytes))
+
+            self._dosya_stream_gonder(conn, temp_tar_path, job_id, delete_after_success=True)
+
+        except Exception as e:
+            self.log(f"Docker acquisition error: {e}")
+            json_gonder(conn, {"durum": "hata", "tur": "hata", "is_id": job_id, "mesaj": str(e)})
+            try:
+                if os.path.exists(temp_tar_path):
+                    os.remove(temp_tar_path)
+            except Exception:
+                pass
+        finally:
+            self._clear_job_state(job_id)
+
     def _istemci_yonet(self, conn, addr):
         self.log(f"Connection: {addr}")
         yetkili = False
@@ -1093,6 +1423,35 @@ class AgentController:
                         "durum": "hata",
                         "mesaj": "Hyper-V support has been removed. Use WinPMEM.",
                     })
+
+                elif komut in {"docker_durum", "docker_status"}:
+                    json_gonder(conn, docker_get_status())
+
+                elif komut in {"docker_listele", "docker_list"}:
+                    containers = docker_list_containers()
+                    json_gonder(conn, {
+                        "durum": "ok",
+                        "konteynerler": containers,
+                        "containers": containers,
+                    })
+
+                elif komut in {"docker_loglar", "docker_logs"}:
+                    c_id = mesaj.get("konteyner_id") or mesaj.get("container_id") or ""
+                    tail = int(mesaj.get("tail") or 200)
+                    logs = docker_get_logs(c_id, tail)
+                    json_gonder(conn, {
+                        "durum": "ok",
+                        "loglar": logs,
+                        "logs": logs,
+                    })
+
+                elif komut in {"docker_edinim", "docker_acquire"}:
+                    c_id = mesaj.get("konteyner_id") or mesaj.get("container_id") or ""
+                    is_id = mesaj.get("is_id") or ("DOCKER_" + str(int(time.time())))
+                    acq_diff = bool(mesaj.get("acquire_diff", True))
+                    acq_logs = bool(mesaj.get("acquire_logs", True))
+                    acq_cfg = bool(mesaj.get("acquire_config", True))
+                    self._docker_stream_acquisition(conn, c_id, acq_diff, acq_logs, acq_cfg, is_id)
 
                 else:
                     json_gonder(conn, {"durum": "hata", "mesaj": f"Unknown command: {komut}"})
