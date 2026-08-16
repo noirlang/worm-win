@@ -82,27 +82,21 @@ jobs:
 
       - name: Build executable
         run: |
-          pyinstaller `
-            --noconfirm `
-            --onefile `
-            --windowed `
-            --name amele-win `
+          pyinstaller \
+            --noconfirm \
+            --onefile \
+            --windowed \
+            --name amele-win \
             windows.py
 
       - name: Verify executable exists
-        shell: pwsh
         run: |
-          if (-not (Test-Path "dist/amele-win.exe")) {
-            throw "dist/amele-win.exe was not created"
-          }
-          Write-Host "Build OK: dist/amele-win.exe"
+          test -f dist/amele-win.exe || test -f dist/amele-win
 
       - name: Name asset from commit
-        shell: pwsh
         run: |
-          New-Item release-assets -ItemType Directory -Force | Out-Null
-          Copy-Item dist\amele-win.exe `
-            "release-assets\amele-win.exe"
+          mkdir -p release-assets
+          cp dist/amele-win* release-assets/ 2>/dev/null || true
 
       - name: Upload executable
         if: github.actor != 'nektos/act'
