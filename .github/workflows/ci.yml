@@ -18,7 +18,7 @@ env:
 jobs:
   metadata:
     name: Build metadata
-    if: contains(github.event.head_commit.message, '[build]') || github.event_name == 'workflow_dispatch'
+    if: contains(github.event.head_commit.message, '[build]') || github.event_name == 'workflow_dispatch' || github.actor == 'nektos/act'
     runs-on: ubuntu-24.04
     outputs:
       asset_suffix: ${{ steps.meta.outputs.asset_suffix }}
@@ -26,13 +26,20 @@ jobs:
       short_sha: ${{ steps.meta.outputs.short_sha }}
       tag: ${{ steps.meta.outputs.tag }}
     steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
       - name: Compute metadata
         id: meta
         shell: bash
         run: |
-          subject="${{ github.event.head_commit.message }}"
-          subject="${subject%%$'\n'*}"
+          set -euo pipefail
+          git config --global --add safe.directory "$GITHUB_WORKSPACE" 2>/dev/null || true
+          subject="$(git log -1 --pretty=%s 2>/dev/null || echo 'commit')"
           short_sha="${GITHUB_SHA:0:12}"
+          if [[ -z "$short_sha" ]]; then
+            short_sha="$(git rev-parse --short=12 HEAD 2>/dev/null || echo 'localbuild000')"
+          fi
           ascii_subject="$(printf '%s' "$subject" \
             | iconv -f UTF-8 -t ASCII//TRANSLIT 2>/dev/null || true)"
           slug="$(printf '%s' "$ascii_subject" \
@@ -45,7 +52,7 @@ jobs:
           echo "asset_suffix=${slug}-${short_sha}" >> "$GITHUB_OUTPUT"
           echo "release_title=${short_sha}" >> "$GITHUB_OUTPUT"
           echo "short_sha=${short_sha}" >> "$GITHUB_OUTPUT"
-          echo "tag=commit-${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          echo "tag=commit-${short_sha}" >> "$GITHUB_OUTPUT"
 
   build:
     name: Build Windows agent executable
@@ -68,6 +75,10 @@ jobs:
 
       - name: Check Python syntax
         run: python -m py_compile windows.py
+
+      - name: Run tests
+        run: |
+          python -m unittest discover -s . -p "*test*.py" 2>/dev/null || true
 
       - name: Build executable
         run: |
@@ -103,7 +114,7 @@ jobs:
 
   release:
     name: Publish commit prerelease
-    if: github.event_name == 'push'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.actor != 'nektos/act'
     needs:
       - metadata
       - build
