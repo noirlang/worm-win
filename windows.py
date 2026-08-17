@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Amele Windows Agent v0.0.2
+Amele Windows Agent v0.0.7
 - Uzak disk imaji alma
 - WinPMEM kontrol / otomatik indirme
 - Secilebilir port + hafif Tk arayuz
@@ -25,7 +25,7 @@ import tempfile
 import tarfile
 from datetime import datetime
 
-VERSION = "0.0.2"
+VERSION = "0.0.7"
 
 try:
     import tkinter as tk

@@ -58,6 +58,9 @@ jobs:
     name: Build Windows agent executable
     needs: metadata
     runs-on: windows-2022
+    defaults:
+      run:
+        shell: bash
     steps:
       - name: Checkout
         uses: actions/checkout@v6
