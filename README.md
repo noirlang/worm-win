@@ -6,94 +6,37 @@
 ![Amele Windows Agent Demo](windows.gif)
 </div>
 
-## Turkce
+## 🇹🇷 Türkçe
 
-Bu depo, Amele ana uygulamasi icin Windows Agent bileşenini icerir.
+Bu depo, **Amele Adli Bilişim Platformu** için geliştirilmiş Windows Agent bileşenidir. Hedef Windows sistemler üzerinde yönetici (Administrator) yetkisiyle çalışarak `\\.\PhysicalDrive` diskleri, WinPMEM RAM bellek dökümleri ve Docker konteyner delillerinin güvenli TCP soketi üzerinden ana Amele uygulamasına aktarılmasını sağlar.
 
-- Ana repo: https://github.com/noirlang/amele
-- Windows Agent repo: https://github.com/noirlang/amele-win
-- Web sitesi: https://amele.noirlang.tr
-
-### Hazir EXE Indirme
-
-```bash
-wget -O amele-win.exe https://amele.noirlang.tr/amele-win.exe
-```
-
-### Windows'ta EXE Derleme
-
-`amele-win.exe` Windows uzerinde derlenmelidir. Linux uzerinde bu agent dogrudan derlenmez; Windows API ve pywin32 bagimliliklari gerekir.
-
-Windows makinede:
-
-```powershell
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-py -m pip install --upgrade pip
-pip install -r requirements.txt
-pip install pyinstaller
-pyinstaller --onefile --windowed --name amele-win windows.py
-```
-
-Cikti dosyasi:
-
-```text
-dist\amele-win.exe
-```
-
-### Calistirma
-
-1. `amele-win.exe` dosyasini yonetici yetkisi ile calistirin.
-2. Gerekirse port ve token ayarlarini girin.
-3. Agent ekranda dinlenen baglanti bilgisini gosterecektir.
-
-### Ana Uygulama ile Baglanti
-
-1. Amele masaustu uygulamasinda Windows araclari ekranina gecin.
-2. Agent'ta gordugunuz IP/Port degerlerini uygulamaya girin.
-3. Baglanin ve edinim adimlarini baslatin.
-
-### CI / Otomatik Derleme
-
-Bu repo **GitHub Actions** ile otomatik derleme yapar.
-
-Pipeline yalnizca commit mesajinda `[build]` etiketi varsa tetiklenir:
-
-```bash
-git commit -m "feat: yeni özellik [build]"
-```
-
-Etiketsiz commit'ler push edilir ama derleme baslatilmaz.
-
-**Manuel tetikleme:** GitHub Actions sekmesinde "Run workflow" butonu.
-
-Pipeline adimlari:
-1. `metadata` — commit slug ve SHA hesaplar
-2. `build` — Python 3.12 + PyInstaller ile `amele-win.exe` uretir
-3. `release` — GitHub Releases'a prerelease olarak yukler
+- **Ana Repo:** https://github.com/noirlang/amele
+- **Windows Agent Repo:** https://github.com/noirlang/amele-win
+- **Web Sitesi:** https://amele.noirlang.tr
 
 ---
 
+### Yetenekler
 
-## English
+- **Başlatma Arayüzü & Sihirbaz:** Port (varsayılan: `4444`) ve güvenlik anahtarı/parolası yapılandırması.
+- **Fiziksel Disk Edinimi:** `\\.\PhysicalDrive[0-31]` üzerinden bit-by-bit ham imaj transferi (RAW veya AFF4 format seçenekleri).
+- **Canlı Hashleme:** İmaj ve RAM transferi sırasında eşzamanlı SHA-256 ve MD5 hash üretimi.
+- **RAM Edinimi:** WinPMEM sürücüsü ve aracı üzerinden canlı bellek dökümü.
+- **Konteyner Desteği:** Docker Desktop ve Windows konteyner yapılandırmalarının incelenmesi.
 
-This repository contains the Windows Agent component for the Amele main application.
+---
 
-- Main repo: https://github.com/noirlang/amele
-- Windows Agent repo: https://github.com/noirlang/amele-win
-- Website: https://amele.noirlang.tr
+### Hazır EXE İndirme
 
-### Download Prebuilt EXE
-
-```bash
-wget -O amele-win.exe https://amele.noirlang.tr/amele-win.exe
+```powershell
+Invoke-WebRequest -Uri "https://amele.noirlang.tr/amele-win.exe" -OutFile "amele-win.exe"
 ```
 
-### Build EXE on Windows
+---
 
-`amele-win.exe` must be built on Windows. It is not built directly on Linux because it uses Windows APIs and pywin32.
+### Windows'ta EXE Derleme
 
-On a Windows machine:
+`amele-win.exe` Windows üzerinde derlenmelidir (Windows API ve pywin32 bağımlılıkları gerektirir).
 
 ```powershell
 py -m venv .venv
@@ -104,20 +47,63 @@ pip install pyinstaller
 pyinstaller --onefile --windowed --name amele-win windows.py
 ```
 
-Output:
+Çıktı dosyası: `dist\amele-win.exe`
 
-```text
-dist\amele-win.exe
+---
+
+### Çalıştırma ve Ana Uygulama ile Bağlantı
+
+1. `amele-win.exe` dosyasını **Yönetici Olarak Çalıştırın** (Run as Administrator).
+2. Amele masaüstü uygulamasında **Ajan / Uzak Araçlar** ekranına geçin.
+3. Hedef Windows IP, Port (`4444`) ve güvenlik token bilgilerini girerek bağlantıyı başlatın.
+
+---
+
+## 🇬🇧 English
+
+This repository contains the Windows Agent component for the **Amele Digital Forensics Platform**. It runs with Administrator privileges on target Windows machines to stream `\\.\PhysicalDrive` disk images, WinPMEM memory dumps, and container evidence over secure TCP sockets.
+
+- **Main Repo:** https://github.com/noirlang/amele
+- **Windows Agent Repo:** https://github.com/noirlang/amele-win
+- **Website:** https://amele.noirlang.tr
+
+---
+
+### Capabilities
+
+- **Interactive Setup Wizard:** Port configuration and security token management.
+- **Physical Drive Acquisition:** Raw bit-by-bit disk imaging from `\\.\PhysicalDrive[0-31]` in RAW or AFF4 formats.
+- **Live Hashing:** Simultaneous on-the-fly SHA-256 and MD5 checksum computation.
+- **RAM Acquisition:** Volatile memory acquisition via WinPMEM kernel driver.
+- **Container Forensics:** Inspection and acquisition support for Docker Desktop environments.
+
+---
+
+### Download Prebuilt EXE
+
+```powershell
+Invoke-WebRequest -Uri "https://amele.noirlang.tr/amele-win.exe" -OutFile "amele-win.exe"
 ```
 
-### Run
+---
 
-1. Run `amele-win.exe` as Administrator.
-2. Configure port/token settings if needed.
-3. The agent UI will display listening connection details.
+### Build EXE on Windows
 
-### Connect with Main App
+```powershell
+py -m venv .venv
+.\.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+pip install -r requirements.txt
+pip install pyinstaller
+pyinstaller --onefile --windowed --name amele-win windows.py
+```
 
-1. Open the Windows tools section in the Amele desktop app.
-2. Enter the same IP/Port values shown by agent.
-3. Connect and start acquisition workflows.
+Output: `dist\amele-win.exe`
+
+---
+
+### Run & Connect with Main App
+
+1. Run `amele-win.exe` as **Administrator**.
+2. Open the **Agent / Remote Tools** tab in Amele desktop application.
+3. Enter the target Windows IP, Port (`4444`), and optional security token.
