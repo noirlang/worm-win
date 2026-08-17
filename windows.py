@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Amele Windows Agent v0.0.1
+Amele Windows Agent v0.0.2
 - Uzak disk imaji alma
 - WinPMEM kontrol / otomatik indirme
 - Secilebilir port + hafif Tk arayuz
@@ -24,6 +24,8 @@ import urllib.error
 import tempfile
 import tarfile
 from datetime import datetime
+
+VERSION = "0.0.2"
 
 try:
     import tkinter as tk
@@ -1469,7 +1471,7 @@ class AgentUI:
     def __init__(self):
         self.controller = AgentController(ui=self)
         self.root = tk.Tk()
-        self.root.title("Amele Windows Agent")
+        self.root.title(f"Amele Windows Agent v{VERSION}")
         self.root.geometry("760x520")
 
         self.log_queue = queue.Queue()
